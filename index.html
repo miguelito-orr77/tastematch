@@ -50,12 +50,12 @@
 </header>
 
 <div id="step1" class="card">
-  <div class="step">Tap <strong>Login with Spotify</strong> to authorize and run the analysis. Your friend's playlists are already loaded — no email needed!</div>
+  <div class="step">Log in with <strong>your</strong> Spotify account. Your friend's public playlists will be fetched without needing their login.</div>
   <button class="btn" onclick="startLogin()">Login with Spotify</button>
 </div>
 
 <div id="step2" class="card hidden">
-  <div class="step">✅ <strong>Logged in!</strong> Tap below to start the analysis across 7 + 14 playlists.</div>
+  <div class="step">✅ <strong>Logged in!</strong> Tap below to analyze 7 of your playlists vs 14 of your friend's.</div>
   <button class="btn" id="analyzeBtn" onclick="analyze()">Analyze Taste Match</button>
   <button class="btn secondary" onclick="logout()">Log out / Switch account</button>
 </div>
@@ -170,9 +170,15 @@
   async function fetchPlaylistArtists(playlistId, token) {
     let artists = new Set();
     let url = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=100&fields=next,items(track(artists(name)))`;
-    while (url) {
+    let attempts = 0;
+    while (url && attempts < 20) {
+      attempts++;
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) break;
+      if (!res.ok) {
+        const text = await res.text();
+        console.warn(`Playlist ${playlistId} failed: ${res.status} ${text}`);
+        break;
+      }
       const data = await res.json();
       (data.items || []).forEach(item => {
         (item?.track?.artists || []).forEach(a => { if (a?.name) artists.add(a.name); });
@@ -182,22 +188,45 @@
     return artists;
   }
 
+  async function getAnonToken() {
+    // Try to get an anonymous token from Spotify's web player
+    const res = await fetch('https://open.spotify.com/get_access_token?reason=transport&productType=web_player', {
+      headers: { 'App-Platform': 'WebPlayer' }
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.accessToken || null;
+  }
+
   async function analyze() {
-    const token = sessionStorage.getItem('access_token');
-    if (!token) { setStatus('Please log in first.', 'error'); return; }
+    const userToken = sessionStorage.getItem('access_token');
+    if (!userToken) { setStatus('Please log in first.', 'error'); return; }
     document.getElementById('results').classList.add('hidden');
     document.getElementById('analyzeBtn').disabled = true;
+
     try {
+      // Try to get anon token for friend's public playlists
+      setStatus('<span class="spinner"></span>Getting public access token...');
+      let friendToken = await getAnonToken();
+      
+      // Fall back to user token if anon fails
+      if (!friendToken) {
+        console.log('Anon token failed, using user token for friend playlists');
+        friendToken = userToken;
+      }
+
       let artists1 = new Set(), artists2 = new Set();
 
       for (let i = 0; i < USER1_PLAYLISTS.length; i++) {
         setStatus(`<span class="spinner"></span>Scanning your playlist ${i+1}/${USER1_PLAYLISTS.length}...`);
-        (await fetchPlaylistArtists(USER1_PLAYLISTS[i], token)).forEach(x => artists1.add(x));
+        const a = await fetchPlaylistArtists(USER1_PLAYLISTS[i], userToken);
+        a.forEach(x => artists1.add(x));
       }
 
       for (let i = 0; i < USER2_PLAYLISTS.length; i++) {
         setStatus(`<span class="spinner"></span>Scanning friend's playlist ${i+1}/${USER2_PLAYLISTS.length}...`);
-        (await fetchPlaylistArtists(USER2_PLAYLISTS[i], token)).forEach(x => artists2.add(x));
+        const a = await fetchPlaylistArtists(USER2_PLAYLISTS[i], friendToken);
+        a.forEach(x => artists2.add(x));
       }
 
       const shared = [...artists1].filter(a => artists2.has(a)).sort();
@@ -206,8 +235,12 @@
       const total = new Set([...artists1, ...artists2]).size;
       const matchPct = total > 0 ? Math.round((shared.length / total) * 100) : 0;
 
-      setStatus('');
-      renderResults(shared, only1, only2, matchPct);
+      const u1count = artists1.size;
+      const u2count = artists2.size;
+
+      setStatus(u2count === 0 ? '⚠️ Friend playlists returned 0 artists — they may be private.' : '', u2count === 0 ? 'error' : '');
+      renderResults(shared, only1, only2, matchPct, u1count, u2count);
+
     } catch (err) {
       setStatus('❌ ' + err.message, 'error');
     } finally {
@@ -220,7 +253,7 @@
     document.querySelectorAll('.artist-section').forEach(s => s.classList.toggle('hidden', s.dataset.section !== tab));
   }
 
-  function renderResults(shared, only1, only2, matchPct) {
+  function renderResults(shared, only1, only2, matchPct, u1count, u2count) {
     const el = document.getElementById('results');
     const chips = (arr, cls = '') => arr.length === 0
       ? '<p style="color:#444;font-size:0.75rem;padding:12px 0;">None found</p>'
@@ -230,8 +263,8 @@
       <div class="stats-row">
         <div class="stat-card"><div class="num">${shared.length}</div><div class="lbl">Shared Artists</div></div>
         <div class="stat-card"><div class="num">${USER1_PLAYLISTS.length + USER2_PLAYLISTS.length}</div><div class="lbl">Playlists Scanned</div></div>
-        <div class="stat-card"><div class="num">${only1.length}</div><div class="lbl">Unique to You</div></div>
-        <div class="stat-card"><div class="num">${only2.length}</div><div class="lbl">Unique to Friend</div></div>
+        <div class="stat-card"><div class="num">${u1count}</div><div class="lbl">Your Artists</div></div>
+        <div class="stat-card"><div class="num">${u2count}</div><div class="lbl">Friend's Artists</div></div>
       </div>
       <div class="tabs">
         <div class="tab active" data-tab="shared" onclick="showTab('shared')">✦ Shared (${shared.length})</div>
