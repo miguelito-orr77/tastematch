@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spotify Taste Match</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
+  :root { --green: #1DB954; --dark: #0a0a0a; --card: #141414; --border: #222; --muted: #555; --text: #eee; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--dark); color: var(--text); font-family: 'Space Mono', monospace; min-height: 100vh; padding: 24px 16px 48px; }
+  header { text-align: center; margin-bottom: 32px; }
+  header h1 { font-family: 'Syne', sans-serif; font-weight: 800; font-size: clamp(1.8rem, 6vw, 3rem); letter-spacing: -1px; color: #fff; }
+  header h1 span { color: var(--green); }
+  header p { color: var(--muted); font-size: 0.75rem; margin-top: 6px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  label { display: block; font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  input { width: 100%; background: #0d0d0d; border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: 'Space Mono', monospace; font-size: 0.75rem; padding: 10px 12px; margin-bottom: 14px; outline: none; transition: border-color 0.2s; }
+  input:focus { border-color: var(--green); }
+  .btn { width: 100%; background: var(--green); color: #000; border: none; border-radius: 8px; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.95rem; padding: 13px; cursor: pointer; transition: opacity 0.2s; margin-top: 4px; }
+  .btn:hover { opacity: 0.88; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn.secondary { background: transparent; color: var(--green); border: 1px solid var(--green); margin-top: 10px; }
+  .status { text-align: center; font-size: 0.75rem; color: var(--muted); margin: 16px 0; min-height: 18px; }
+  .status.error { color: #e74c3c; }
+  .status.success { color: var(--green); }
+  .step { font-size: 0.7rem; color: var(--muted); margin-bottom: 14px; line-height: 1.6; }
+  .step strong { color: var(--text); }
+  .match-banner { background: linear-gradient(135deg, #0f2a1a, #112b1a); border: 1px solid #1a4a2a; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 12px; }
+  .match-banner .pct { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 3.5rem; color: var(--green); line-height: 1; }
+  .match-banner .label { font-size: 0.7rem; color: #4a9a6a; margin-top: 4px; text-transform: uppercase; letter-spacing: 2px; }
+  .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: center; }
+  .stat-card .num { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.8rem; color: #fff; }
+  .stat-card .lbl { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .tab { flex: 1; background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--muted); font-family: 'Space Mono', monospace; font-size: 0.65rem; padding: 8px 4px; cursor: pointer; text-align: center; transition: all 0.2s; }
+  .tab.active { background: var(--green); border-color: var(--green); color: #000; font-weight: 700; }
+  .artist-list { display: flex; flex-direction: column; gap: 8px; }
+  .artist-chip { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; display: flex; align-items: center; gap: 12px; font-size: 0.85rem; color: var(--text); }
+  .artist-chip.shared { border-color: #1a4a2a; background: #0c1f14; }
+  .artist-chip .idx { font-size: 0.65rem; color: var(--muted); min-width: 20px; }
+  .artist-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+  .hidden { display: none; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #333; border-top-color: var(--green); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .debug { font-size: 0.6rem; color: #444; margin-top: 8px; word-break: break-all; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Taste<span>Match</span></h1>
+  <p>Compare public Spotify playlist artists</p>
+</header>
+
+<div id="step1" class="card">
+  <div class="step">Enter your details then tap <strong>Login with Spotify</strong>.</div>
+  <label>Spotify Client ID</label>
+  <input type="text" id="clientId" value="c4ad0a57eccd458db75a668e46e8feff" />
+  <label>Profile 1 URL</label>
+  <input type="text" id="url1" value="https://open.spotify.com/user/312vabo7phwrtddiwohehnlf7dy4" />
+  <label>Profile 2 URL</label>
+  <input type="text" id="url2" value="https://open.spotify.com/user/mikebeaulieu96" />
+  <button class="btn" onclick="startLogin()">Login with Spotify</button>
+</div>
+
+<div id="step2" class="card hidden">
+  <div class="step">✅ <strong>Logged in!</strong> Tap below to start the analysis.</div>
+  <button class="btn" id="analyzeBtn" onclick="analyze()">Analyze Taste Match</button>
+  <button class="btn secondary" onclick="logout()">Log out / Switch account</button>
+</div>
+
+<div class="status" id="status"></div>
+<div id="results" class="hidden"></div>
+
+<script>
+  const SCOPES = 'playlist-read-private playlist-read-collaborative user-read-private';
+
+  function extractUserId(url) {
+    const match = url.match(/user\/([^?/]+)/);
+    return match ? match[1] : null;
+  }
+
+  function setStatus(msg, type = '') {
+    const el = document.getElementById('status');
+    el.innerHTML = msg;
+    el.className = 'status' + (type ? ' ' + type : '');
+  }
+
+  function generateRandomString(length) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const arr = new Uint8Array(length);
+    crypto.getRandomValues(arr);
+    return Array.from(arr).map(b => chars[b % chars.length]).join('');
+  }
+
+  async function generateCodeChallenge(verifier) {
+    const data = new TextEncoder().encode(verifier);
+    const digest = await crypto.subtle.digest('SHA-256', data);
+    return btoa(String.fromCharCode(...new Uint8Array(digest)))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  }
+
+  async function startLogin() {
+    const clientId = document.getElementById('clientId').value.trim();
+    const url1 = document.getElementById('url1').value.trim();
+    const url2 = document.getElementById('url2').value.trim();
+    if (!clientId || !extractUserId(url1) || !extractUserId(url2)) {
+      setStatus('Please fill in all fields.', 'error'); return;
+    }
+    sessionStorage.setItem('clientId', clientId);
+    sessionStorage.setItem('url1', url1);
+    sessionStorage.setItem('url2', url2);
+    const verifier = generateRandomString(64);
+    const challenge = await generateCodeChallenge(verifier);
+    sessionStorage.setItem('pkce_verifier', verifier);
+    const redirectUri = window.location.origin + window.location.pathname;
+    sessionStorage.setItem('redirect_uri', redirectUri);
+    const params = new URLSearchParams({
+      client_id: clientId, response_type: 'code',
+      redirect_uri: redirectUri, code_challenge_method: 'S256',
+      code_challenge: challenge, scope: SCOPES,
+    });
+    window.location.href = 'https://accounts.spotify.com/authorize?' + params.toString();
+  }
+
+  async function handleCallback() {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const error = params.get('error');
+    if (error) { setStatus('Spotify login cancelled.', 'error'); return; }
+    if (!code) return;
+    window.history.replaceState({}, '', window.location.pathname);
+    const clientId = sessionStorage.getItem('clientId');
+    const verifier = sessionStorage.getItem('pkce_verifier');
+    const redirectUri = sessionStorage.getItem('redirect_uri');
+    if (!clientId || !verifier) { setStatus('Session expired. Please try again.', 'error'); return; }
+    setStatus('<span class="spinner"></span>Exchanging token...');
+    try {
+      const res = await fetch('https://accounts.spotify.com/api/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ client_id: clientId, grant_type: 'authorization_code', code, redirect_uri: redirectUri, code_verifier: verifier })
+      });
+      const data = await res.json();
+      if (!data.access_token) throw new Error(data.error_description || 'Token exchange failed.');
+      sessionStorage.setItem('access_token', data.access_token);
+      sessionStorage.removeItem('pkce_verifier');
+      setStatus('');
+      showStep2();
+    } catch (err) { setStatus('❌ ' + err.message, 'error'); }
+  }
+
+  function showStep2() {
+    document.getElementById('step1').classList.add('hidden');
+    document.getElementById('step2').classList.remove('hidden');
+  }
+
+  function logout() {
+    sessionStorage.clear();
+    document.getElementById('step2').classList.add('hidden');
+    document.getElementById('step1').classList.remove('hidden');
+    document.getElementById('results').classList.add('hidden');
+    setStatus('');
+  }
+
+  async function fetchAllPlaylists(userId, token) {
+    let playlists = [];
+    // Try both endpoints
+    let url = `https://api.spotify.com/v1/users/${encodeURIComponent(userId)}/playlists?limit=50`;
+    let attempts = 0;
+    while (url && attempts < 20) {
+      attempts++;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const text = await res.text();
+      if (!res.ok) {
+        throw new Error(`Playlist fetch failed (${res.status}): ${text.substring(0, 100)}`);
+      }
+      const data = JSON.parse(text);
+      const pub = (data.items || []).filter(p => p && p.public !== false);
+      playlists = playlists.concat(pub);
+      url = data.next;
+    }
+    return playlists;
+  }
+
+  async function fetchPlaylistArtists(playlistId, token) {
+    let artists = new Set();
+    let url = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=100&fields=next,items(track(artists(name)))`;
+    while (url) {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) break;
+      const data = await res.json();
+      (data.items || []).forEach(item => {
+        (item?.track?.artists || []).forEach(a => { if (a?.name) artists.add(a.name); });
+      });
+      url = data.next;
+    }
+    return artists;
+  }
+
+  async function analyze() {
+    const token = sessionStorage.getItem('access_token');
+    const url1 = sessionStorage.getItem('url1');
+    const url2 = sessionStorage.getItem('url2');
+    const userId1 = extractUserId(url1);
+    const userId2 = extractUserId(url2);
+    if (!token) { setStatus('Please log in first.', 'error'); return; }
+    document.getElementById('results').classList.add('hidden');
+    document.getElementById('analyzeBtn').disabled = true;
+    try {
+      setStatus('<span class="spinner"></span>Fetching playlists for User 1...');
+      const playlists1 = await fetchAllPlaylists(userId1, token);
+      setStatus('<span class="spinner"></span>Fetching playlists for User 2...');
+      const playlists2 = await fetchAllPlaylists(userId2, token);
+      let artists1 = new Set(), artists2 = new Set();
+      for (let i = 0; i < playlists1.length; i++) {
+        setStatus(`<span class="spinner"></span>Scanning playlist ${i+1}/${playlists1.length} (User 1)...`);
+        (await fetchPlaylistArtists(playlists1[i].id, token)).forEach(x => artists1.add(x));
+      }
+      for (let i = 0; i < playlists2.length; i++) {
+        setStatus(`<span class="spinner"></span>Scanning playlist ${i+1}/${playlists2.length} (User 2)...`);
+        (await fetchPlaylistArtists(playlists2[i].id, token)).forEach(x => artists2.add(x));
+      }
+      const shared = [...artists1].filter(a => artists2.has(a)).sort();
+      const only1 = [...artists1].filter(a => !artists2.has(a)).sort();
+      const only2 = [...artists2].filter(a => !artists1.has(a)).sort();
+      const total = new Set([...artists1, ...artists2]).size;
+      const matchPct = total > 0 ? Math.round((shared.length / total) * 100) : 0;
+      setStatus('');
+      renderResults(shared, only1, only2, matchPct, playlists1.length, playlists2.length);
+    } catch (err) {
+      setStatus('❌ ' + err.message, 'error');
+    } finally {
+      document.getElementById('analyzeBtn').disabled = false;
+    }
+  }
+
+  function showTab(tab) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+    document.querySelectorAll('.artist-section').forEach(s => s.classList.toggle('hidden', s.dataset.section !== tab));
+  }
+
+  function renderResults(shared, only1, only2, matchPct, p1count, p2count) {
+    const el = document.getElementById('results');
+    const chips = (arr, cls = '') => arr.length === 0
+      ? '<p style="color:#444;font-size:0.75rem;padding:12px 0;">None found</p>'
+      : arr.map((a, i) => `<div class="artist-chip ${cls}"><span class="idx">${String(i+1).padStart(2,'0')}</span>${cls ? '<span class="dot"></span>' : ''}<span>${a}</span></div>`).join('');
+    el.innerHTML = `
+      <div class="match-banner"><div class="pct">${matchPct}%</div><div class="label">Taste Match</div></div>
+      <div class="stats-row">
+        <div class="stat-card"><div class="num">${shared.length}</div><div class="lbl">Shared Artists</div></div>
+        <div class="stat-card"><div class="num">${p1count + p2count}</div><div class="lbl">Playlists Scanned</div></div>
+        <div class="stat-card"><div class="num">${only1.length}</div><div class="lbl">Unique to User 1</div></div>
+        <div class="stat-card"><div class="num">${only2.length}</div><div class="lbl">Unique to User 2</div></div>
+      </div>
+      <div class="tabs">
+        <div class="tab active" data-tab="shared" onclick="showTab('shared')">✦ Shared (${shared.length})</div>
+        <div class="tab" data-tab="only1" onclick="showTab('only1')">User 1 (${only1.length})</div>
+        <div class="tab" data-tab="only2" onclick="showTab('only2')">User 2 (${only2.length})</div>
+      </div>
+      <div class="artist-list">
+        <div class="artist-section" data-section="shared">${chips(shared, 'shared')}</div>
+        <div class="artist-section hidden" data-section="only1">${chips(only1)}</div>
+        <div class="artist-section hidden" data-section="only2">${chips(only2)}</div>
+      </div>`;
+    el.classList.remove('hidden');
+  }
+
+  window.addEventListener('load', () => {
+    const token = sessionStorage.getItem('access_token');
+    if (token) { showStep2(); }
+    else if (window.location.search.includes('code=')) { handleCallback(); }
+  });
+</script>
+</body>
+</html>
